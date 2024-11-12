@@ -2,10 +2,9 @@
 
 set -euo pipefail
 
-# TODO: Ensure this is the correct GitHub homepage where releases can be downloaded for <YOUR TOOL>.
-GH_REPO="<TOOL REPO>"
-TOOL_NAME="<YOUR TOOL>"
-TOOL_TEST="<TOOL CHECK>"
+GH_REPO="https://github.com/int128/kubelogin"
+TOOL_NAME="kubectl-oidc_login"
+TOOL_TEST="kubectl-oidc_login --version"
 
 fail() {
 	echo -e "asdf-$TOOL_NAME: $*"
@@ -14,7 +13,7 @@ fail() {
 
 curl_opts=(-fsSL)
 
-# NOTE: You might want to remove this if <YOUR TOOL> is not hosted on GitHub releases.
+# NOTE: You might want to remove this if kubectl-oidc_login is not hosted on GitHub releases.
 if [ -n "${GITHUB_API_TOKEN:-}" ]; then
 	curl_opts=("${curl_opts[@]}" -H "Authorization: token $GITHUB_API_TOKEN")
 fi
@@ -31,18 +30,40 @@ list_github_tags() {
 }
 
 list_all_versions() {
-	# TODO: Adapt this. By default we simply list the tag names from GitHub releases.
-	# Change this function if <YOUR TOOL> has other means of determining installable versions.
+	# By default we simply list the tag names from GitHub releases.
 	list_github_tags
 }
 
 download_release() {
-	local version filename url
+	local version filename platform arch url
 	version="$1"
 	filename="$2"
 
-	# TODO: Adapt the release URL convention for <YOUR TOOL>
-	url="$GH_REPO/archive/v${version}.tar.gz"
+	case "$(uname)" in
+	[dD]arwin*)
+		platform="darwin"
+		;;
+	[lL]inux*)
+		platform="linux"
+		;;
+	*)
+		echo "Unsupported OS" 1>&2
+		return 1
+		;;
+	esac
+
+	arch="$(uname -m)"
+	case "${arch}" in
+	x86_64)
+		arch="amd64"
+		;;
+	aarch64)
+		arch="arm64"
+		;;
+	*) ;;
+	esac
+
+	url="${GH_REPO}/releases/download/v${version}/kubelogin_${platform}_${arch}.zip"
 
 	echo "* Downloading $TOOL_NAME release $version..."
 	curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
@@ -61,9 +82,18 @@ install_version() {
 		mkdir -p "$install_path"
 		cp -r "$ASDF_DOWNLOAD_PATH"/* "$install_path"
 
-		# TODO: Assert <YOUR TOOL> executable exists.
+		# Assert kubectl-oidc_login executable exists.
 		local tool_cmd
 		tool_cmd="$(echo "$TOOL_TEST" | cut -d' ' -f1)"
+
+		# The repository download packages include the binary as kubelogin,
+		# so we must rename it to match kubectl expectations
+		# See https://github.com/int128/kubelogin#setup
+		# Guard in case they change this in a future release
+		if [ ! -e "${install_path}/${tool_cmd}" ]; then
+			mv "$install_path"/kubelogin "${install_path}/${tool_cmd}"
+		fi
+
 		test -x "$install_path/$tool_cmd" || fail "Expected $install_path/$tool_cmd to be executable."
 
 		echo "$TOOL_NAME $version installation was successful!"
